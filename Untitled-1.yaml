@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - основная база данных
+  postgres:
+    image: postgres:15-alpine
+    container_name: foodstorm-postgres
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: foodstorm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d  # Автоматическое применение миграций
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d foodstorm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - foodstorm-net
+
+  # Redis - кэширование и черные списки токенов
+  redis:
+    image: redis:7-alpine
+    container_name: foodstorm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes  # Сохранять данные на диск
+    networks:
+      - foodstorm-net
+
+  # RabbitMQ - брокер сообщений
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: foodstorm-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP протокол
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - foodstorm-net
+
+  # PgAdmin - админка для PostgreSQL (только для разработки)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: foodstorm-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@foodstorm.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - foodstorm-net
+    profiles:
+      - dev  # Запускается только с флагом --profile dev
+
+volumes:
+  pgdata:
+    name: foodstorm-pgdata
+  redis-data:
+    name: foodstorm-redis-data
+  rabbitmq-data:
+    name: foodstorm-rabbitmq-data
+
+networks:
+  foodstorm-net:
+    name: foodstorm-network
+    driver: bridge
